@@ -163,11 +163,13 @@ class ComboDeviceHidProxy:
     ) -> DeviceLink | None:
         if not input_device_path:
             return None
-
-        input_device = InputDevice(input_device_path)
-        device_link = DeviceLink(
-            input_device, keyboard_gadget, mouse_gadget, consumer_control_gadget
-        )
+        try:
+            input_device = InputDevice(input_device_path)
+            device_link = DeviceLink(
+                input_device, keyboard_gadget, mouse_gadget, consumer_control_gadget)
+        except FileNotFoundError:
+            device_link = DeviceLink(
+                None, keyboard_gadget, mouse_gadget, consumer_control_gadget, input_device_path)
 
         return device_link
 
@@ -225,6 +227,14 @@ class ComboDeviceHidProxy:
         _logger.info(f"Starting event loop for {repr(device_link)}")
         should_reconnect = True
         input_device = device_link.input_device
+
+        if input_device is None:
+            _logger.critical(
+                    f"{device_link.input_device_path} disconnected. Reconnecting..."
+                )
+            reconnected = await self._async_wait_for_device(None, input_device_path=device_link.input_device_path)
+            await device_link.async_reset_input_device()
+            input_device = device_link.input_device
 
         try:
             await self._async_relay_input_events_loop(device_link)
@@ -295,22 +305,32 @@ class ComboDeviceHidProxy:
             _logger.exception(f"Error sending [{categorize(event)}] to {mouse}")
 
     async def _async_wait_for_device(
-        self, input_device: InputDevice, delay_seconds: float = 1
+        self, input_device: InputDevice, delay_seconds: float = 1,
+        input_device_path = None
     ) -> bool:
+        device_name = None
+        device_path = input_device_path
+        if input_device:
+            device_name = input_device.name
+            device_path = input_device.path
+
+        if device_path is None:
+            return
+
         await asyncio.sleep(delay_seconds)
         last_log_time = datetime.now()
 
-        while input_device.path not in list_devices():
-            last_log_time = self._log_reconnection_attempt(input_device, last_log_time)
+        while device_path not in list_devices():
+            last_log_time = self._log_reconnection_attempt(device_name, last_log_time)
             await asyncio.sleep(delay_seconds)
 
         return True
 
     def _log_reconnection_attempt(
-        self, input_device: InputDevice, last_log_time: datetime
+        self, input_device_name, last_log_time: datetime
     ) -> datetime:
         if _elapsed_seconds_since(last_log_time) >= 60:
-            _logger.debug(f"Still trying to reconnect to {input_device.name}...")
+            _logger.debug(f"Still trying to reconnect to {input_device_name}...")
             last_log_time = datetime.now()
 
         return last_log_time

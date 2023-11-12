@@ -53,10 +53,14 @@ class DeviceLink:
         keyboard_gadget: Keyboard = None,
         mouse_gadget: Mouse = None,
         consumer_gadget: ConsumerControl = None,
+        input_device_path = None,
     ):
         self._input_device = None
         self._input_device_name = None
         self._input_device_path = None
+
+        if input_device_path:
+            self._input_device_path = input_device_path
 
         if input_device:
             self._input_device = input_device
@@ -87,11 +91,16 @@ class DeviceLink:
     def input_device(self) -> InputDevice:
         return self._input_device
 
+    @property
+    def input_device_path(self):
+        return self._input_device_path
+
     async def async_reset_input_device(self) -> None:
         self._input_device = None
         while True:
             try:
                 self._input_device = InputDevice(self._input_device_path)
+                self._input_device_name = self._input_device.name
                 break
             except Exception:
                 _logger.exception(f"Error resetting input {self._input_device_path}")
